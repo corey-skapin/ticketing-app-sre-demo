@@ -1,7 +1,7 @@
 'use strict';
 
 const elements = Object.fromEntries([
-  'health', 'result', 'timing', 'checkout', 'start', 'stop', 'loop',
+  'health', 'release', 'result', 'timing', 'checkout', 'start', 'stop', 'loop',
   'attempts', 'successes', 'failures',
 ].map((id) => [id, document.getElementById(id)]));
 let running = false;
@@ -33,6 +33,8 @@ async function checkHealth() {
   try {
     const response = await fetch('/healthz', { signal: AbortSignal.timeout(7000) });
     if (!response.ok) throw new Error('Unavailable');
+    const health = await response.json().catch(() => ({}));
+    elements.release.textContent = health.release ? `Release ${health.release}` : '';
     elements.health.textContent = 'Tickets available';
     elements.health.dataset.state = 'success';
   } catch {

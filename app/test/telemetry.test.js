@@ -16,33 +16,50 @@ function offlineTelemetry(t) {
   const sdkRequire = createRequire(require.resolve('applicationinsights'));
   const { BasicTracerProvider, InMemorySpanExporter, SimpleSpanProcessor } =
     sdkRequire('@opentelemetry/sdk-trace-base');
+  const { LoggerProvider, InMemoryLogRecordExporter, SimpleLogRecordProcessor } =
+    sdkRequire('@opentelemetry/sdk-logs');
   // Exercise the installed exporter's real wire-envelope conversion, without
   // constructing Azure exporters (which initialize senders and background work).
-  const { readableSpanToEnvelope } = require(join(
-    dirname(sdkRequire.resolve('@azure/monitor-opentelemetry-exporter')), 'utils', 'spanUtils.js'));
+  const exporterUtils = join(
+    dirname(sdkRequire.resolve('@azure/monitor-opentelemetry-exporter')), 'utils');
+  const { readableSpanToEnvelope } = require(join(exporterUtils, 'spanUtils.js'));
+  const { logToEnvelope } = require(join(exporterUtils, 'logUtils.js'));
+  const { LogApi } = require(join(dirname(require.resolve('applicationinsights')), 'shim', 'logsApi.js'));
   const exporter = new InMemorySpanExporter();
   const provider = new BasicTracerProvider({
     spanProcessors: [new SimpleSpanProcessor(exporter)],
   });
+  const logExporter = new InMemoryLogRecordExporter();
+  const loggerProvider = new LoggerProvider({
+    processors: [new SimpleLogRecordProcessor({ exporter: logExporter })],
+  });
   t.after(() => provider.shutdown());
+  t.after(() => loggerProvider.shutdown());
   const connect = t.mock.method(Socket.prototype, 'connect', () => {
     assert.fail('Offline telemetry tests must not open sockets');
   });
   t.after(() => assert.equal(connect.mock.callCount(), 0));
-  // Replace only initialization and tracer acquisition; trackRequest runs
-  // unchanged against real, locally scoped OTel spans.
+  // Replace only initialization and the tracer and logger behind trackRequest,
+  // trackException and trackEvent, which run unchanged against real, locally
+  // scoped OTel spans and log records.
   t.mock.method(sdk.TelemetryClient.prototype, 'initialize', function () {
     this._isInitialized = true;
   });
   t.mock.method(sdk.TelemetryClient.prototype, '_getTracerInstance',
     () => provider.getTracer('ApplicationInsightsTracer'));
   const client = createTelemetry(connectionString, sdk);
+  client._logApi = new LogApi(loggerProvider.getLogger('ApplicationInsightsLogger'));
   return {
     client,
     async envelopes() {
       await provider.forceFlush();
-      const envelopes = exporter.getFinishedSpans().map((span) => readableSpanToEnvelope(span, key));
+      await loggerProvider.forceFlush();
+      const envelopes = [
+        ...exporter.getFinishedSpans().map((span) => readableSpanToEnvelope(span, key)),
+        ...logExporter.getFinishedLogRecords().map((log) => logToEnvelope(log, key)),
+      ];
       exporter.reset();
+      logExporter.reset();
       return envelopes;
     },
   };
@@ -114,7 +131,10 @@ test('pinned SDK reproduces response code zero for named requests without an HTT
 test('checkout emits a sanitized 200 request envelope through the installed SDK and exporter', async (t) => {
   const telemetry = offlineTelemetry(t);
   const secret = 'checkout-secret-never-export';
-  const handler = createHandler({ telemetry: telemetry.client });
+  const handler = createHandler({
+    telemetry: telemetry.client,
+    release: { version: '9.8.7', sha: 'abc1234' },
+  });
   const response = {
     setHeader() {},
     writeHead(status) { this.status = status; },
@@ -135,6 +155,23 @@ test('checkout emits a sanitized 200 request envelope through the installed SDK 
   assert.equal(request.responseCode, '200');
   assert.equal(request.success, true);
   assert.equal(request.url, 'http://localhost/checkout');
-  assert.deepEqual(request.properties, { simulated: 'true', outcome: 'reserved' });
+  assert.deepEqual(request.properties, {
+    simulated: 'true', outcome: 'reserved', releaseSha: 'abc1234', appVersion: '9.8.7',
+  });
   assert.equal(JSON.stringify(envelopes).includes(secret), false);
+});
+
+test('the release start event keeps its release properties through the installed SDK and exporter', async (t) => {
+  const telemetry = offlineTelemetry(t);
+  telemetry.client.trackEvent({
+    name: 'ReleaseStarted',
+    properties: { releaseSha: 'abc1234', appVersion: '9.8.7' },
+  });
+  const envelopes = await telemetry.envelopes();
+  assert.equal(envelopes.length, 1);
+  assert.equal(envelopes[0].data.baseType, 'EventData');
+  assert.equal(envelopes[0].data.baseData.name, 'ReleaseStarted');
+  assert.deepEqual(envelopes[0].data.baseData.properties, {
+    releaseSha: 'abc1234', appVersion: '9.8.7',
+  });
 });

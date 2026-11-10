@@ -3,6 +3,7 @@
 const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const { performance } = require('node:perf_hooks');
+const defaultRelease = require('./release');
 
 const assets = new Map([
   ['/', ['index.html', 'text/html; charset=utf-8']],
@@ -22,7 +23,9 @@ async function defaultReserveTickets() {
   return { reserved: true };
 }
 
-function createHandler({ telemetry, reserveTickets = defaultReserveTickets } = {}) {
+function createHandler({ telemetry, reserveTickets = defaultReserveTickets, release = defaultRelease } = {}) {
+  const releaseProperties = { releaseSha: release.sha, appVersion: release.version };
+
   function track(method, data) {
     try {
       telemetry?.[method](data);
@@ -35,6 +38,8 @@ function createHandler({ telemetry, reserveTickets = defaultReserveTickets } = {
     response.setHeader('Cache-Control', 'no-store');
     response.setHeader('X-Content-Type-Options', 'nosniff');
     response.setHeader('Referrer-Policy', 'no-referrer');
+    response.setHeader('X-Release-Sha', release.sha);
+    response.setHeader('X-App-Version', release.version);
     response.setHeader('Content-Security-Policy',
       "default-src 'none'; script-src 'self'; style-src 'self'; img-src https://images.unsplash.com; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'");
     request.resume(); // No endpoint reads request bodies.
@@ -51,7 +56,7 @@ function createHandler({ telemetry, reserveTickets = defaultReserveTickets } = {
       return json(response, 405, { error: 'Method not allowed' });
     }
     if (path === '/healthz') {
-      return json(response, 200, { status: 'healthy' });
+      return json(response, 200, { status: 'healthy', version: release.version, release: release.sha });
     }
     if (asset) {
       response.writeHead(200, { 'Content-Type': asset.type });
@@ -67,7 +72,7 @@ function createHandler({ telemetry, reserveTickets = defaultReserveTickets } = {
       resultCode: '200',
       success: true,
       // AI 3.16.0 omits http.method for named requests; the exporter needs it for HTTP status mapping.
-      properties: { simulated: 'true', outcome: 'reserved', 'http.method': 'POST' },
+      properties: { simulated: 'true', outcome: 'reserved', 'http.method': 'POST', ...releaseProperties },
     });
     return json(response, 200, {
       success: true, simulated: true,

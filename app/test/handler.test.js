@@ -5,6 +5,9 @@ const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const { createHandler } = require('../handler');
+const builtInRelease = require('../release');
+
+const release = { version: '9.8.7', sha: 'abc1234' };
 
 function fixture(options = {}) {
   const requests = [];
@@ -12,6 +15,7 @@ function fixture(options = {}) {
   const telemetry = { trackRequest: (data) => requests.push(data) };
   const handler = createHandler({
     telemetry,
+    release,
     reserveTickets: async () => { reservations.push('reserved'); },
     ...options,
   });
@@ -48,6 +52,7 @@ test('checkout reserves tickets, reports a simulated success and tracks one requ
   assert.ok(request.duration >= 0);
   assert.deepEqual(request.properties, {
     simulated: 'true', outcome: 'reserved', 'http.method': 'POST',
+    releaseSha: 'abc1234', appVersion: '9.8.7',
   });
 });
 
@@ -77,13 +82,38 @@ test('request bodies are drained and never read', async () => {
   assert.equal(drained, 3);
 });
 
-test('health is served without reserving anything', async () => {
+test('health reports the running version and release', async () => {
   const f = fixture();
   const response = await invoke(f.handler, 'GET', '/healthz');
   assert.equal(response.status, 200);
-  assert.deepEqual(JSON.parse(response.body), { status: 'healthy' });
+  assert.deepEqual(JSON.parse(response.body), {
+    status: 'healthy', version: '9.8.7', release: 'abc1234',
+  });
   assert.equal(f.reservations.length, 0);
   assert.equal(f.requests.length, 0);
+});
+
+test('every response carries the release headers, including 404 and 405', async () => {
+  const f = fixture();
+  for (const [method, path, status] of [
+    ['GET', '/', 200], ['GET', '/app.js', 200], ['GET', '/styles.css', 200],
+    ['GET', '/healthz', 200], ['POST', '/checkout', 200],
+    ['GET', '/missing', 404], ['POST', '/healthz', 405], ['GET', '/checkout', 405],
+  ]) {
+    const response = await invoke(f.handler, method, path);
+    assert.equal(response.status, status, `${method} ${path}`);
+    assert.equal(response.headers['X-Release-Sha'], 'abc1234', `${method} ${path}`);
+    assert.equal(response.headers['X-App-Version'], '9.8.7', `${method} ${path}`);
+  }
+});
+
+test('the release defaults to the one built into the app', async () => {
+  const response = await invoke(createHandler(), 'GET', '/healthz');
+  assert.deepEqual(JSON.parse(response.body), {
+    status: 'healthy', version: builtInRelease.version, release: builtInRelease.sha,
+  });
+  assert.equal(response.headers['X-Release-Sha'], builtInRelease.sha);
+  assert.equal(response.headers['X-App-Version'], builtInRelease.version);
 });
 
 test('telemetry errors do not change checkout responses', async () => {

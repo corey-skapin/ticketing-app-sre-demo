@@ -24,6 +24,17 @@ credentials or put them in browser code.
 | --- | --- |
 | `PORT` | HTTP listening port; default `8080` |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | Server-side SDK connection string; omit for local offline use |
+| `APP_VERSION` | Version to report; default `dev` |
+| `RELEASE_SHA` | Release (commit) to report; default `dev` |
+
+## Release
+
+The app reports the version and release (commit) it is running. `release.js`
+resolves them from values baked in at bundling time (esbuild defines
+`__APP_VERSION__` and `__RELEASE_SHA__`), then from `APP_VERSION` and
+`RELEASE_SHA`, then falls back to `dev`. Every response, including 404 and 405,
+carries `X-App-Version` and `X-Release-Sha` headers, and the page shows the
+release next to the health status.
 
 ## Checkout
 
@@ -37,7 +48,7 @@ reservation is simulated and always succeeds; no purchase is made.
 | --- | --- | --- |
 | GET | `/` | Self-contained UI |
 | GET | `/app.js`, `/styles.css` | Only explicitly allowlisted static assets |
-| GET | `/healthz` | 200 JSON |
+| GET | `/healthz` | 200 JSON: `status`, `version` and `release` |
 | POST | `/checkout` | 200 JSON for a simulated reservation |
 
 Known paths with other methods return 405 with `Allow`; unknown paths return
@@ -45,7 +56,9 @@ Known paths with other methods return 405 with `Allow`; unknown paths return
 
 SDK telemetry is manual-only, unsampled (`samplingPercentage: 100`): one request
 named `POST /checkout` for each checkout, with its success, duration and HTTP
-status. No request bodies, query parameters, host headers or access tokens are
+status. Every request and event carries `releaseSha` and `appVersion`
+properties, and startup sends a `ReleaseStarted` event when telemetry is
+configured. No request bodies, query parameters, host headers or access tokens are
 recorded. Automatic dependency, request, exception, console and live-metrics
 collection are disabled to prevent duplicates and sensitive diagnostics. Missing
 telemetry config disables telemetry without blocking the app. Unavailable

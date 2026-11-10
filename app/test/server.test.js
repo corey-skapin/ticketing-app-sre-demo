@@ -17,6 +17,7 @@ function startServer({ env = {}, modules = {} } = {}) {
   };
   const doubles = {
     './telemetry': { createTelemetry() { return undefined; } },
+    './release': { version: '1.2.3', sha: 'abc1234' },
     './handler': {
       createHandler(options) {
         state.handlerOptions = options;
@@ -61,9 +62,14 @@ test('server applies conservative HTTP timeouts', () => {
   assert.equal(server.keepAliveTimeout, 5000);
 });
 
+function telemetryDouble() {
+  const events = [];
+  return { events, trackEvent: (event) => events.push(JSON.parse(JSON.stringify(event))) };
+}
+
 test('telemetry is created from the connection string and handed to the handler', () => {
   const sdk = { name: 'sdk-double' };
-  const telemetry = { name: 'telemetry-double' };
+  const telemetry = telemetryDouble();
   const calls = [];
   const { state } = startServer({
     env: { APPLICATIONINSIGHTS_CONNECTION_STRING: 'connection-string-double' },
@@ -74,6 +80,40 @@ test('telemetry is created from the connection string and handed to the handler'
   });
   assert.deepEqual(calls, [['connection-string-double', sdk]]);
   assert.equal(state.handlerOptions.telemetry, telemetry);
+});
+
+test('startup reports the release to telemetry', () => {
+  const telemetry = telemetryDouble();
+  startServer({
+    env: { APPLICATIONINSIGHTS_CONNECTION_STRING: 'connection-string-double' },
+    modules: {
+      applicationinsights: {},
+      './telemetry': { createTelemetry: () => telemetry },
+    },
+  });
+  assert.deepEqual(telemetry.events, [{
+    name: 'ReleaseStarted',
+    properties: { releaseSha: 'abc1234', appVersion: '1.2.3' },
+  }]);
+});
+
+test('a failing release event does not stop the server or leak its error', () => {
+  const telemetry = { trackEvent() { throw new Error('event-unavailable'); } };
+  const { state } = startServer({
+    env: { APPLICATIONINSIGHTS_CONNECTION_STRING: 'connection-string-double' },
+    modules: {
+      applicationinsights: {},
+      './telemetry': { createTelemetry: () => telemetry },
+    },
+  });
+  assert.equal(state.listen.port, 8080);
+  assert.equal(state.handlerOptions.telemetry, telemetry);
+  assert.equal(JSON.stringify(state.logs).includes('event-unavailable'), false);
+});
+
+test('startup logs the release and port', () => {
+  const { state } = startServer({ env: { PORT: '3100' } });
+  assert.deepEqual(state.logs, [['info', 'Ticketing app 1.2.3 (abc1234) listening on port 3100.']]);
 });
 
 test('a telemetry failure at startup does not stop the server', () => {

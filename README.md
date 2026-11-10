@@ -17,7 +17,9 @@ npm ci --ignore-scripts
 npm start
 ```
 
-Open <http://localhost:8080>.
+Open <http://localhost:8080>. `GET /healthz` reports the version and release the
+app is running, and every response carries them in the `X-App-Version` and
+`X-Release-Sha` headers.
 
 ## Test it
 
@@ -37,3 +39,5 @@ You configure the app with environment variables.
 | --- | --- |
 | `PORT` | Port to listen on. Defaults to `8080`. |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | Optional. Sends telemetry to Application Insights when set. |
+| `APP_VERSION` | Optional. The version the app reports. Defaults to `dev`. |
+| `RELEASE_SHA` | Optional. The release (commit) the app reports. Defaults to `dev`. |
