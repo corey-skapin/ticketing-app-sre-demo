@@ -1,4 +1,2 @@
-.azure/
 **/node_modules/
-main.json
-main.parameters.resolved.json
+dist/

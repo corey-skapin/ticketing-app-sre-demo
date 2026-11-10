@@ -1,55 +1,41 @@
-# Ticketing app source
+# Ticketing app
 
-This folder is the complete Azure Developer CLI project for the onboarding lab ticketing workload. It contains the Node.js application, Bicep infrastructure, and deployment parameters required by `azd up`.
+A small Node.js site for reserving tickets to a fictional concert. It serves one
+page, a health endpoint and a simulated `POST /checkout`; no purchase is ever
+made. This repository is the sample app for an Azure SRE Agent demo.
 
-## Deploy
+This repository holds the application only. The infrastructure that hosts it
+lives elsewhere.
 
-Install [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli), [Azure Developer CLI](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd), and [Node.js 22 or later](https://nodejs.org/en/download). Then run these commands from this directory:
+## Run it locally
 
-On Windows, PowerShell 7 runs the post-deploy hook. In the full lab checkout,
-that hook can opt into agent setup through `ONBOARDING_CONFIGURE_AGENT=true`.
-A standalone copy deploys only the workload by default; it does not require
-the sibling agent setup files. See the full lab's setup guide before selecting
-agent configuration.
+You need Node.js 22 or later.
 
-```bash
-azd auth login
-az login
-azd env set LAB_WORKLOAD_OPTION app-service
-azd up
+```sh
+cd app
+npm ci --ignore-scripts
+npm start
 ```
 
-Choose one of two equal workload options before `azd up`:
+Open <http://localhost:8080>. By default checkout connects to a PostgreSQL
+database. To run without one, set `WORKLOAD_OPTION=app-service` first.
 
-- `app-service` deploys Linux App Service and shared telemetry.
-- `app-service-postgresql` adds PostgreSQL Flexible Server and private networking. Register `Microsoft.DBforPostgreSQL` before deployment and use a subscription where PostgreSQL 16 with `Standard_B1ms` is available in Sweden Central.
+## Test it
 
-To select the PostgreSQL option:
-
-```bash
-az provider register --namespace Microsoft.DBforPostgreSQL --wait
-azd env set LAB_WORKLOAD_OPTION app-service-postgresql
-azd up
+```sh
+cd app
+npm test
+npm run check
 ```
 
-Retrieve the deployed application URL:
+The tests run offline.
 
-```bash
-azd env get-value SERVICE_CHECKOUT_ENDPOINT_URL
-```
+## Configuration
 
-## Validate locally
+You configure the app with environment variables.
 
-The tests do not contact Azure:
-
-```bash
-npm ci --prefix ./app --ignore-scripts --no-audit --no-fund
-npm test --prefix ./app
-npm run check --prefix ./app
-```
-
-## Clean up
-
-```bash
-azd down
-```
+| Variable | Meaning |
+| --- | --- |
+| `PORT` | Port to listen on. Defaults to `8080`. |
+| `APPLICATIONINSIGHTS_CONNECTION_STRING` | Optional. Sends telemetry to Application Insights when set. |
+| `WORKLOAD_OPTION` | `app-service` skips the database. The default, `app-service-postgresql`, needs the database settings listed in [app/README.md](app/README.md). |
