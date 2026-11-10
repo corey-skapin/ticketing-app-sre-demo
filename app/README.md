@@ -60,7 +60,8 @@ The package needs no `npm install` on the host and writes nothing at runtime, so
 it runs from a read-only folder, for example with App Service's run from package.
 Set `NODE_OPTIONS=--enable-source-maps` to get the original file names and line
 numbers in stack traces. `server.js` links to `server.js.map`, so keep the two
-files side by side. The map holds file names and positions, not the sources.
+files side by side. The map holds file names and positions, not the sources. The
+root README describes how tags publish the zip as a release.
 
 ## Checkout
 

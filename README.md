@@ -54,3 +54,24 @@ You configure the app with environment variables.
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | Optional. Sends telemetry to Application Insights when set. |
 | `APP_VERSION` | Optional. The version the app reports when you run it from source. Defaults to `dev`. A packaged build reports its own. |
 | `RELEASE_SHA` | Optional. The release (commit) the app reports when you run it from source. Defaults to `dev`. A packaged build reports its own. |
+
+## Releases and rollback
+
+Pushes to `main` and pull requests run the tests and build the package. Every tag
+that starts with `v` publishes a release: the release workflow checks that the tag
+equals `v` plus the version in `app/package.json`, runs the tests, builds the
+package and attaches `ticketing-app-<tag>.zip` to a GitHub release. You can
+download it from:
+
+```text
+https://github.com/<owner>/<repo>/releases/download/<tag>/ticketing-app-<tag>.zip
+```
+
+The zip root holds the single-file bundle (`server.js` and `server.js.map`), a
+minimal `package.json` and the `public` folder. The app runs from that package:
+set the App Service setting `WEBSITE_RUN_FROM_PACKAGE` to the asset URL and
+restart the app. To roll back, point `WEBSITE_RUN_FROM_PACKAGE` at an earlier
+tag's asset.
+
+`GET /healthz` reports the `version` and `release` the app is running, so you can
+confirm which package is live.

@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Check the tag matches the package version
+        working-directory: app
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package version v$version" >&2
+            exit 1
+          fi
+      - name: Install
+        working-directory: app
+        run: npm ci --ignore-scripts
+      - name: Test
+        working-directory: app
+        run: npm test
+      - name: Check
+        working-directory: app
+        run: npm run check
+      - name: Package
+        working-directory: app
+        run: npm run package
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "$GITHUB_REF_NAME" "app/dist/ticketing-app-$GITHUB_REF_NAME.zip" --title "$GITHUB_REF_NAME" --generate-notes
