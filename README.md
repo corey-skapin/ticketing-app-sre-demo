@@ -17,8 +17,7 @@ npm ci --ignore-scripts
 npm start
 ```
 
-Open <http://localhost:8080>. By default checkout connects to a PostgreSQL
-database. To run without one, set `WORKLOAD_OPTION=app-service` first.
+Open <http://localhost:8080>.
 
 ## Test it
 
@@ -38,4 +37,3 @@ You configure the app with environment variables.
 | --- | --- |
 | `PORT` | Port to listen on. Defaults to `8080`. |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | Optional. Sends telemetry to Application Insights when set. |
-| `WORKLOAD_OPTION` | `app-service` skips the database. The default, `app-service-postgresql`, needs the database settings listed in [app/README.md](app/README.md). |

@@ -2,91 +2,90 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { EventEmitter } = require('node:events');
 const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const { runInNewContext } = require('node:vm');
-const { createHandler } = require('../handler');
 
-test('server selects the UAMI and fetches the PostgreSQL scope only on checkout, never on startup', async () => {
-  const env = {
-    AZURE_CLIENT_ID: 'test-uami-client-id', POSTGRES_USER: 'lab-uami-display-name',
-    POSTGRES_HOST: 'private.example.test', POSTGRES_DATABASE: 'lab',
-  };
-  const token = 'server-token-never-expose';
-  const scopes = [];
-  const logs = [];
-  const clients = [];
-  let identityOptions;
-  let handler;
-  let listening = false;
+// Runs the real startup file against module doubles: no sockets and no SDK.
+function startServer({ env = {}, modules = {} } = {}) {
+  const state = { handlerOptions: undefined, listen: undefined, logs: [], required: [] };
   const server = {
     listen(port, host, callback) {
-      assert.equal(port, 8080);
-      assert.equal(host, '0.0.0.0');
-      listening = true;
+      state.listen = { port, host };
       callback();
     },
   };
-  class ManagedIdentityCredential {
-    constructor(options) { identityOptions = options; }
-    async getToken(scope) {
-      scopes.push(scope);
-      return { token, expiresOnTimestamp: Date.now() + 60000 };
-    }
-  }
-  class Client extends EventEmitter {
-    constructor(config) {
-      super();
-      this.config = config;
-      this.closed = false;
-      this.destroyed = false;
-      this.connection = { stream: { destroy: () => { this.destroyed = true; } } };
-      clients.push(this);
-    }
-    async connect() { assert.equal(await this.config.password(), token); }
-    async query(sql) { assert.equal(sql, 'SELECT 1'); }
-    async end() { this.closed = true; }
-  }
-  const modules = {
-    './telemetry': { createTelemetry() { assert.fail('Telemetry must not initialize without config'); } },
-    'node:http': { createServer(callback) { handler = callback; return server; } },
-    pg: { Client },
-    '@azure/identity': { ManagedIdentityCredential },
-    './handler': { createHandler: (options) => createHandler({ ...options, env }) },
+  const doubles = {
+    './telemetry': { createTelemetry() { return undefined; } },
+    './handler': {
+      createHandler(options) {
+        state.handlerOptions = options;
+        return function handler() {};
+      },
+    },
+    'node:http': { createServer(handler) { state.handler = handler; return server; } },
+    ...modules,
   };
-  // Run the real startup wiring with explicit module doubles: no sockets or MI calls.
   runInNewContext(readFileSync(join(__dirname, '../server.js'), 'utf8'), {
     process: { env },
-    console: { info: (...args) => logs.push(args), warn: (...args) => logs.push(args) },
+    console: {
+      info: (...args) => state.logs.push(['info', ...args]),
+      warn: (...args) => state.logs.push(['warn', ...args]),
+    },
     require(name) {
-      assert.ok(Object.hasOwn(modules, name), `Unexpected startup dependency: ${name}`);
-      return modules[name];
+      assert.ok(Object.hasOwn(doubles, name), `Unexpected startup dependency: ${name}`);
+      state.required.push(name);
+      return doubles[name];
     },
   });
-  assert.equal(identityOptions.clientId, env.AZURE_CLIENT_ID);
-  assert.equal(listening, true);
-  assert.equal(clients.length, 0);
-  assert.deepEqual(scopes, []);
+  return { state, server };
+}
 
-  async function invoke(method, url) {
-    const response = {
-      setHeader() {},
-      writeHead(status) { this.status = status; },
-      end(body) { this.body = String(body); },
-    };
-    await handler({ method, url, resume() {} }, response);
-    return response;
-  }
-  assert.equal((await invoke('GET', '/healthz')).status, 200);
-  assert.equal((await invoke('GET', '/')).status, 200);
-  assert.equal(clients.length, 0);
-  assert.deepEqual(scopes, []);
-  const response = await invoke('POST', '/checkout');
-  assert.equal(response.status, 200);
-  assert.deepEqual(scopes, ['https://ossrdbms-aad.database.windows.net/.default']);
-  assert.equal(clients[0].config.user, env.POSTGRES_USER);
-  assert.equal(clients[0].closed, true);
-  assert.equal(clients[0].destroyed, true);
-  assert.equal(JSON.stringify({ response, logs }).includes(token), false);
+test('server listens on all interfaces on the default port and needs no telemetry', () => {
+  const { state } = startServer();
+  assert.deepEqual(state.listen, { port: 8080, host: '0.0.0.0' });
+  assert.equal(state.handlerOptions.telemetry, undefined);
+  assert.equal(state.required.includes('applicationinsights'), false);
+  assert.equal(typeof state.handler, 'function');
+});
+
+test('server listens on the configured port', () => {
+  const { state } = startServer({ env: { PORT: '3100' } });
+  assert.equal(state.listen.port, 3100);
+});
+
+test('server applies conservative HTTP timeouts', () => {
+  const { server } = startServer();
+  assert.equal(server.requestTimeout, 10000);
+  assert.equal(server.headersTimeout, 10000);
+  assert.equal(server.keepAliveTimeout, 5000);
+});
+
+test('telemetry is created from the connection string and handed to the handler', () => {
+  const sdk = { name: 'sdk-double' };
+  const telemetry = { name: 'telemetry-double' };
+  const calls = [];
+  const { state } = startServer({
+    env: { APPLICATIONINSIGHTS_CONNECTION_STRING: 'connection-string-double' },
+    modules: {
+      applicationinsights: sdk,
+      './telemetry': { createTelemetry: (...args) => { calls.push(args); return telemetry; } },
+    },
+  });
+  assert.deepEqual(calls, [['connection-string-double', sdk]]);
+  assert.equal(state.handlerOptions.telemetry, telemetry);
+});
+
+test('a telemetry failure at startup does not stop the server', () => {
+  const { state } = startServer({
+    env: { APPLICATIONINSIGHTS_CONNECTION_STRING: 'connection-string-double' },
+    modules: {
+      applicationinsights: {},
+      './telemetry': { createTelemetry() { throw new Error('sdk-unavailable'); } },
+    },
+  });
+  assert.equal(state.listen.port, 8080);
+  assert.equal(state.handlerOptions.telemetry, undefined);
+  assert.equal(state.logs.some(([level]) => level === 'warn'), true);
+  assert.equal(JSON.stringify(state.logs).includes('sdk-unavailable'), false);
 });

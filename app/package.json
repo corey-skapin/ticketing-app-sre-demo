@@ -1,8 +1,8 @@
 {
-  "name": "onboardinglab-checkout",
+  "name": "ticketing-app",
   "version": "1.0.0",
   "private": true,
-  "description": "Simulated checkout connectivity lab for Linux Azure App Service",
+  "description": "Small ticketing site with a simulated checkout",
   "engines": {
     "node": ">=22"
   },
@@ -12,9 +12,7 @@
     "check": "node --check server.js && node --check handler.js && node --check telemetry.js && node --check public/app.js && node --check test/handler.test.js && node --check test/server.test.js && node --check test/telemetry.test.js"
   },
   "dependencies": {
-    "@azure/identity": "4.13.2",
-    "applicationinsights": "3.16.0",
-    "pg": "8.23.0"
+    "applicationinsights": "3.16.0"
   },
   "overrides": {
     "@types/node": "22.20.1"
