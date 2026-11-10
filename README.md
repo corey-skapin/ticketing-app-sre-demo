@@ -31,6 +31,19 @@ npm run check
 
 The tests run offline.
 
+## Package it
+
+```sh
+cd app
+npm ci --ignore-scripts
+npm run package
+```
+
+This writes `app/dist/ticketing-app-v<version>.zip`. The zip holds the whole app
+bundled into a single `server.js`, with its source map, a minimal `package.json`
+and the `public` folder. It needs no `npm install` and runs from a read-only
+folder.
+
 ## Configuration
 
 You configure the app with environment variables.
@@ -39,5 +52,5 @@ You configure the app with environment variables.
 | --- | --- |
 | `PORT` | Port to listen on. Defaults to `8080`. |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | Optional. Sends telemetry to Application Insights when set. |
-| `APP_VERSION` | Optional. The version the app reports. Defaults to `dev`. |
-| `RELEASE_SHA` | Optional. The release (commit) the app reports. Defaults to `dev`. |
+| `APP_VERSION` | Optional. The version the app reports when you run it from source. Defaults to `dev`. A packaged build reports its own. |
+| `RELEASE_SHA` | Optional. The release (commit) the app reports when you run it from source. Defaults to `dev`. A packaged build reports its own. |

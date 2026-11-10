@@ -24,8 +24,8 @@ credentials or put them in browser code.
 | --- | --- |
 | `PORT` | HTTP listening port; default `8080` |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | Server-side SDK connection string; omit for local offline use |
-| `APP_VERSION` | Version to report; default `dev` |
-| `RELEASE_SHA` | Release (commit) to report; default `dev` |
+| `APP_VERSION` | Version to report when you run from source; default `dev`. A packaged build reports its own. |
+| `RELEASE_SHA` | Release (commit) to report when you run from source; default `dev`. A packaged build reports its own. |
 
 ## Release
 
@@ -35,6 +35,32 @@ resolves them from values baked in at bundling time (esbuild defines
 `RELEASE_SHA`, then falls back to `dev`. Every response, including 404 and 405,
 carries `X-App-Version` and `X-Release-Sha` headers, and the page shows the
 release next to the health status.
+
+## Package
+
+```sh
+npm ci --ignore-scripts
+npm run package
+```
+
+`scripts/package.mjs` bundles `server.js` and everything it requires, including
+the Application Insights SDK, into one file with esbuild (Node 22, CommonJS, not
+minified, with a source map in a separate file). It writes
+`dist/ticketing-app-v<version>.zip`, which is ignored by git. The zip has no
+parent folder; its root holds `server.js`, `server.js.map`, a minimal
+`package.json` (name, version, `npm start` and no dependencies) and
+`public/index.html`, `public/app.js` and `public/styles.css`.
+
+The version baked into the bundle comes from `package.json`, and the release is
+the first seven characters of `RELEASE_SHA`, `GITHUB_SHA` or `git rev-parse HEAD`,
+in that order. The zip is deterministic: entries are sorted, timestamps are fixed
+and line endings are normalized, so one commit always builds the same bytes.
+
+The package needs no `npm install` on the host and writes nothing at runtime, so
+it runs from a read-only folder, for example with App Service's run from package.
+Set `NODE_OPTIONS=--enable-source-maps` to get the original file names and line
+numbers in stack traces. `server.js` links to `server.js.map`, so keep the two
+files side by side. The map holds file names and positions, not the sources.
 
 ## Checkout
 
