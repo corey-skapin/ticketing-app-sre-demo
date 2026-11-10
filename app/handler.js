@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto = require('node:crypto');
 const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const { performance } = require('node:perf_hooks');
@@ -16,6 +17,10 @@ const assets = new Map([
 function json(response, status, body) {
   response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
   response.end(JSON.stringify(body));
+}
+
+function createOrderId() {
+  return crypto.randomUUID().slice(0, 8).toUpperCase();
 }
 
 // There is no inventory service behind the page, so a reservation always succeeds.
@@ -79,8 +84,9 @@ function createHandler({ telemetry, reserveTickets = defaultReserveTickets, rele
     }
 
     const started = performance.now();
+    const orderId = createOrderId();
     try {
-      await reserveTickets();
+      await reserveTickets({ orderId });
     } catch (error) {
       const failure = error instanceof Error ? error : new Error(String(error));
       track('trackException', {
@@ -99,7 +105,7 @@ function createHandler({ telemetry, reserveTickets = defaultReserveTickets, rele
     }
     trackCheckout(started, true);
     return json(response, 200, {
-      success: true, simulated: true,
+      success: true, simulated: true, orderId,
       message: 'Simulated checkout succeeded; no purchase was made.',
     });
   };

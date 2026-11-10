@@ -65,9 +65,13 @@ root README describes how tags publish the zip as a release.
 
 ## Checkout
 
-`POST /checkout` reserves tickets through `reserveTickets()`, which
+`POST /checkout` reserves tickets through `reserveTickets({ orderId })`, which
 `createHandler` accepts as an option so tests can replace it. The built-in
 reservation is simulated and always succeeds; no purchase is made.
+
+Each reservation gets a short `orderId`: the first eight characters of a random
+UUID, in upper case. The success response returns it, and the page shows it after
+"Tickets reserved".
 
 If the reservation throws, checkout answers `500` with a generic message and no
 error details. The failure is tracked as an exception (message and stack) and as
@@ -82,7 +86,7 @@ message, never the stack. Health stays available.
 | GET | `/` | Self-contained UI |
 | GET | `/app.js`, `/styles.css` | Only explicitly allowlisted static assets |
 | GET | `/healthz` | 200 JSON: `status`, `version` and `release` |
-| POST | `/checkout` | 200 JSON for a simulated reservation, or 500 JSON if it fails |
+| POST | `/checkout` | 200 JSON with an `orderId` for a simulated reservation, or 500 JSON if it fails |
 
 Known paths with other methods return 405 with `Allow`; unknown paths return
 404. Bodies are ignored.

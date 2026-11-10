@@ -2,6 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const { createHandler } = require('../handler');
@@ -20,7 +21,7 @@ function fixture(options = {}) {
   const handler = createHandler({
     telemetry,
     release,
-    reserveTickets: async () => { reservations.push('reserved'); },
+    reserveTickets: async (reservation) => { reservations.push(reservation); },
     ...options,
   });
   return { handler, requests, exceptions, reservations, telemetry };
@@ -45,8 +46,10 @@ test('checkout reserves tickets, reports a simulated success and tracks one requ
   const response = await invoke(f.handler);
   assert.equal(response.status, 200);
   assert.equal(response.headers['Content-Type'], 'application/json; charset=utf-8');
-  assert.deepEqual(JSON.parse(response.body), {
-    success: true, simulated: true,
+  const body = JSON.parse(response.body);
+  assert.match(body.orderId, /^[0-9A-F]{8}$/);
+  assert.deepEqual(body, {
+    success: true, simulated: true, orderId: body.orderId,
     message: 'Simulated checkout succeeded; no purchase was made.',
   });
   assert.equal(f.reservations.length, 1);
@@ -68,6 +71,25 @@ test('the built-in reservation succeeds without any configuration', async () => 
   const response = await invoke(createHandler());
   assert.equal(response.status, 200);
   assert.equal(JSON.parse(response.body).success, true);
+});
+
+test('a reservation returns the first eight characters of a random UUID, uppercased', async (t) => {
+  t.mock.method(crypto, 'randomUUID', () => 'a1b2c3d4-test');
+  const f = fixture();
+  const response = await invoke(f.handler);
+  assert.equal(JSON.parse(response.body).orderId, 'A1B2C3D4');
+  assert.deepEqual(f.reservations, [{ orderId: 'A1B2C3D4' }]);
+});
+
+test('every reservation gets its own order reference', async () => {
+  const f = fixture();
+  const orderIds = new Set();
+  for (let i = 0; i < 25; i += 1) {
+    const { orderId } = JSON.parse((await invoke(f.handler)).body);
+    assert.match(orderId, /^[0-9A-F]{8}$/);
+    orderIds.add(orderId);
+  }
+  assert.equal(orderIds.size, 25);
 });
 
 test('a failed reservation returns a 500 without error details and health stays available', async (t) => {

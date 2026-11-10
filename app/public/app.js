@@ -61,7 +61,8 @@ async function checkout() {
     const data = await response.json();
     if (!response.ok || data.success !== true) throw new Error('Unavailable');
     successes += 1;
-    elements.result.textContent = 'Tickets reserved';
+    elements.result.textContent = data.orderId
+      ? `Tickets reserved · Order ${data.orderId}` : 'Tickets reserved';
     elements.result.dataset.state = 'success';
   } catch {
     failures += 1;

@@ -79,3 +79,37 @@ test('the page reports an unavailable service when /healthz fails', async () => 
   assert.equal(page.elements.health.dataset.state, 'failure');
   assert.equal(page.elements.release.textContent, '');
 });
+
+test('the page shows the order reference after Tickets reserved', async () => {
+  const page = await openPage({
+    health: reply({ status: 'healthy', version: '9.8.7', release: 'abc1234' }),
+    checkout: reply({ success: true, simulated: true, orderId: 'A1B2C3D4' }),
+  });
+  await page.elements.checkout.listeners.click();
+  assert.deepEqual(page.fetches.filter(({ url }) => url === '/checkout'),
+    [{ url: '/checkout', method: 'POST' }]);
+  assert.equal(page.elements.result.textContent, 'Tickets reserved · Order A1B2C3D4');
+  assert.equal(page.elements.result.dataset.state, 'success');
+  assert.equal(String(page.elements.successes.textContent), '1');
+});
+
+test('the page still confirms a reservation that carries no order reference', async () => {
+  const page = await openPage({
+    health: reply({ status: 'healthy' }),
+    checkout: reply({ success: true, simulated: true }),
+  });
+  await page.elements.checkout.listeners.click();
+  assert.equal(page.elements.result.textContent, 'Tickets reserved');
+  assert.equal(page.elements.result.dataset.state, 'success');
+});
+
+test('the page reports a failed reservation without an order reference', async () => {
+  const page = await openPage({
+    health: reply({ status: 'healthy' }),
+    checkout: reply({ success: false, simulated: true }, false),
+  });
+  await page.elements.checkout.listeners.click();
+  assert.equal(page.elements.result.textContent, 'Reservation could not be completed');
+  assert.equal(page.elements.result.dataset.state, 'failure');
+  assert.equal(String(page.elements.failures.textContent), '1');
+});
