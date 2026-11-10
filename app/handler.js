@@ -78,7 +78,7 @@ function createHandler({ createClient, getAccessToken, telemetry, env = process.
       return json(response, 405, { error: 'Method not allowed' });
     }
     if (path === '/healthz') {
-      return json(response, 200, { status: 'healthy' });
+      return json(response, 200, { status: 'ok' });
     }
     if (asset) {
       response.writeHead(200, { 'Content-Type': asset.type });

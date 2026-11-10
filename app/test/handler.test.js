@@ -125,6 +125,13 @@ test('missing configuration affects only checkout; health and assets work withou
   assert.equal(f.requests[0].success, false);
 });
 
+test('health endpoint returns HTTP 200 with status ok', async () => {
+  const f = fixture();
+  const response = await invoke(f.handler, 'GET', '/healthz');
+  assert.equal(response.status, 200);
+  assert.deepEqual(JSON.parse(response.body), { status: 'ok' });
+});
+
 for (const [name, getAccessToken] of [
   ['rejected', async () => { throw secretError; }],
   ['expired', async () => ({ token, expiresOnTimestamp: Date.now() - 1 })],
