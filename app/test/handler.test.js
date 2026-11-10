@@ -305,7 +305,7 @@ test('only allowlisted paths and methods are served, including traversal rejecti
 });
 
 test('App Service option succeeds without PostgreSQL and emits request-only telemetry', async () => {
-  const f = fixture({ handler: { env: { WORKLOAD_OPTION: 'app-service' } } });
+  const f = fixture({ handler: { env: { WORKLOAD_OPTION: 'app-service', PAYMENT_GATEWAY_URL: 'https://payments.example.test' } } });
   const response = await invoke(f.handler);
   assert.equal(response.status, 200);
   assert.equal(JSON.parse(response.body).success, true);
@@ -317,6 +317,7 @@ test('App Service option succeeds without PostgreSQL and emits request-only tele
 test('App Service fault returns 503 while health remains available', async () => {
   const f = fixture({ handler: { env: {
     WORKLOAD_OPTION: 'app-service',
+    PAYMENT_GATEWAY_URL: 'https://payments.example.test',
     APP_FAULT_ENABLED: 'true',
   } } });
   const response = await invoke(f.handler);

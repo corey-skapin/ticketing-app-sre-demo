@@ -90,6 +90,10 @@ function createHandler({ createClient, getAccessToken, telemetry, env = process.
     let outcome = 'busy';
     const workloadOption = env.WORKLOAD_OPTION || 'app-service-postgresql';
     if (workloadOption === 'app-service') {
+      const gateway = env.PAYMENT_GATEWAY_URL;
+      if (!gateway) {
+        throw new Error('PAYMENT_GATEWAY_URL is not configured');
+      }
       success = env.APP_FAULT_ENABLED !== 'true';
       outcome = success ? 'available' : 'application-fault';
     } else if (workloadOption === 'app-service-postgresql' && activeAttempts < MAX_DB_ATTEMPTS) {
