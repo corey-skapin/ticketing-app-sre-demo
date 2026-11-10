@@ -11,16 +11,23 @@ const release = { version: '9.8.7', sha: 'abc1234' };
 
 function fixture(options = {}) {
   const requests = [];
+  const exceptions = [];
   const reservations = [];
-  const telemetry = { trackRequest: (data) => requests.push(data) };
+  const telemetry = {
+    trackRequest: (data) => requests.push(data),
+    trackException: (data) => exceptions.push(data),
+  };
   const handler = createHandler({
     telemetry,
     release,
     reserveTickets: async () => { reservations.push('reserved'); },
     ...options,
   });
-  return { handler, requests, reservations, telemetry };
+  return { handler, requests, exceptions, reservations, telemetry };
 }
+
+const reservationFailure = new Error('reservation backend rejected order for 203.0.113.7');
+const failing = (error = reservationFailure) => ({ reserveTickets: async () => { throw error; } });
 
 async function invoke(handler, method = 'POST', url = '/checkout', request = {}) {
   const response = {
@@ -44,6 +51,7 @@ test('checkout reserves tickets, reports a simulated success and tracks one requ
   });
   assert.equal(f.reservations.length, 1);
   assert.equal(f.requests.length, 1);
+  assert.equal(f.exceptions.length, 0);
   const [request] = f.requests;
   assert.equal(request.name, 'POST /checkout');
   assert.equal(request.url, 'http://localhost/checkout');
@@ -60,6 +68,88 @@ test('the built-in reservation succeeds without any configuration', async () => 
   const response = await invoke(createHandler());
   assert.equal(response.status, 200);
   assert.equal(JSON.parse(response.body).success, true);
+});
+
+test('a failed reservation returns a 500 without error details and health stays available', async (t) => {
+  const logged = t.mock.method(console, 'error', () => {});
+  const f = fixture(failing());
+  const response = await invoke(f.handler, 'POST', '/checkout?token=never-export');
+  assert.equal(response.status, 500);
+  assert.equal(response.headers['Content-Type'], 'application/json; charset=utf-8');
+  assert.deepEqual(JSON.parse(response.body), {
+    success: false, simulated: true,
+    message: 'Simulated checkout failed. Please try again shortly.',
+  });
+  assert.equal(response.body.includes('203.0.113.7'), false);
+  assert.equal(response.headers['X-Release-Sha'], 'abc1234');
+  assert.equal(response.headers['X-App-Version'], '9.8.7');
+  assert.equal((await invoke(f.handler, 'GET', '/healthz')).status, 200);
+  assert.equal(logged.mock.callCount(), 1);
+});
+
+test('a failed reservation is tracked as an exception carrying the release', async (t) => {
+  t.mock.method(console, 'error', () => {});
+  const f = fixture(failing());
+  await invoke(f.handler);
+  assert.equal(f.exceptions.length, 1);
+  assert.equal(f.exceptions[0].exception, reservationFailure);
+  assert.deepEqual(f.exceptions[0].properties, {
+    releaseSha: 'abc1234', appVersion: '9.8.7', operation: 'POST /checkout',
+  });
+});
+
+test('a failed reservation is tracked as a failed request', async (t) => {
+  t.mock.method(console, 'error', () => {});
+  const f = fixture(failing());
+  await invoke(f.handler);
+  assert.equal(f.requests.length, 1);
+  const [request] = f.requests;
+  assert.equal(request.name, 'POST /checkout');
+  assert.equal(request.url, 'http://localhost/checkout');
+  assert.equal(request.success, false);
+  assert.equal(request.resultCode, '500');
+  assert.ok(request.duration >= 0);
+  assert.deepEqual(request.properties, {
+    simulated: 'true', outcome: 'failed', 'http.method': 'POST',
+    releaseSha: 'abc1234', appVersion: '9.8.7',
+  });
+});
+
+test('a failed reservation writes one log line with the message only', async (t) => {
+  const lines = [];
+  t.mock.method(console, 'error', (line) => lines.push(['error', line]));
+  for (const method of ['log', 'info', 'warn']) {
+    t.mock.method(console, method, (line) => lines.push([method, line]));
+  }
+  const f = fixture(failing());
+  await invoke(f.handler);
+  assert.equal(lines.length, 1);
+  const [level, line] = lines[0];
+  assert.equal(level, 'error');
+  assert.deepEqual(JSON.parse(line), {
+    event: 'checkout-failed', release: 'abc1234', message: reservationFailure.message,
+  });
+  assert.equal(line.includes('\n'), false);
+  assert.equal(line.includes('    at '), false);
+});
+
+test('a successful checkout neither logs nor tracks a failure', async (t) => {
+  const logged = t.mock.method(console, 'error', () => {});
+  const f = fixture();
+  await invoke(f.handler);
+  assert.equal(f.exceptions.length, 0);
+  assert.equal(logged.mock.callCount(), 0);
+});
+
+test('thrown values that are not errors are still reported as failed checkouts', async (t) => {
+  const lines = [];
+  t.mock.method(console, 'error', (line) => lines.push(line));
+  const f = fixture(failing('gateway said no'));
+  const response = await invoke(f.handler);
+  assert.equal(response.status, 500);
+  assert.ok(f.exceptions[0].exception instanceof Error);
+  assert.equal(f.exceptions[0].exception.message, 'gateway said no');
+  assert.equal(JSON.parse(lines[0]).message, 'gateway said no');
 });
 
 test('telemetry never receives request data', async () => {
@@ -116,18 +206,22 @@ test('the release defaults to the one built into the app', async () => {
   assert.equal(response.headers['X-App-Version'], builtInRelease.version);
 });
 
-test('telemetry errors do not change checkout responses', async () => {
-  const f = fixture();
-  f.telemetry.trackRequest = () => { throw new Error('telemetry-unavailable'); };
-  const response = await invoke(f.handler);
-  assert.equal(response.status, 200);
-  assert.equal(JSON.parse(response.body).success, true);
-  assert.equal(response.body.includes('telemetry-unavailable'), false);
+test('telemetry failures never change the failed or the successful response', async (t) => {
+  t.mock.method(console, 'error', () => {});
+  for (const [options, status] of [[failing(), 500], [{}, 200]]) {
+    const f = fixture(options);
+    f.telemetry.trackRequest = () => { throw new Error('telemetry-unavailable'); };
+    f.telemetry.trackException = () => { throw new Error('telemetry-unavailable'); };
+    const response = await invoke(f.handler);
+    assert.equal(response.status, status);
+    assert.equal(response.body.includes('telemetry-unavailable'), false);
+  }
 });
 
-test('checkout works without telemetry', async () => {
-  const f = fixture({ telemetry: undefined });
-  assert.equal((await invoke(f.handler)).status, 200);
+test('checkout works without telemetry, even when it fails', async (t) => {
+  t.mock.method(console, 'error', () => {});
+  assert.equal((await invoke(fixture({ telemetry: undefined }).handler)).status, 200);
+  assert.equal((await invoke(fixture({ telemetry: undefined, ...failing() }).handler)).status, 500);
 });
 
 test('static assets are served from the public folder with their content types', async () => {

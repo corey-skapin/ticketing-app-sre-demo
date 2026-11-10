@@ -161,6 +161,46 @@ test('checkout emits a sanitized 200 request envelope through the installed SDK 
   assert.equal(JSON.stringify(envelopes).includes(secret), false);
 });
 
+test('a failed checkout emits a 500 request and an exception through the installed SDK and exporter', async (t) => {
+  t.mock.method(console, 'error', () => {});
+  const telemetry = offlineTelemetry(t);
+  const secret = 'checkout-secret-never-export';
+  const handler = createHandler({
+    telemetry: telemetry.client,
+    release: { version: '9.8.7', sha: 'abc1234' },
+    reserveTickets: async () => { throw new Error('reservation backend unavailable'); },
+  });
+  const response = {
+    setHeader() {},
+    writeHead(status) { this.status = status; },
+    end(body) { this.body = JSON.parse(body); },
+  };
+  await handler({
+    method: 'POST', url: `/checkout?token=${secret}`,
+    headers: { host: `${secret}.example.test`, authorization: `Bearer ${secret}` },
+    resume() {},
+  }, response);
+  assert.equal(response.status, 500);
+  assert.equal(response.body.success, false);
+  const envelopes = await telemetry.envelopes();
+  assert.equal(envelopes.length, 2);
+  const request = envelopes.find((item) => item.data.baseType === 'RequestData').data.baseData;
+  assert.equal(request.name, 'POST /checkout');
+  assert.equal(request.responseCode, '500');
+  assert.equal(request.success, false);
+  assert.equal(request.url, 'http://localhost/checkout');
+  assert.deepEqual(request.properties, {
+    simulated: 'true', outcome: 'failed', releaseSha: 'abc1234', appVersion: '9.8.7',
+  });
+  const exception = envelopes.find((item) => item.data.baseType === 'ExceptionData').data.baseData;
+  assert.equal(exception.exceptions[0].message, 'reservation backend unavailable');
+  assert.match(exception.exceptions[0].parsedStack[0].fileName, /telemetry\.test\.js$/);
+  assert.deepEqual(exception.properties, {
+    releaseSha: 'abc1234', appVersion: '9.8.7', operation: 'POST /checkout',
+  });
+  assert.equal(JSON.stringify(envelopes).includes(secret), false);
+});
+
 test('the release start event keeps its release properties through the installed SDK and exporter', async (t) => {
   const telemetry = offlineTelemetry(t);
   telemetry.client.trackEvent({

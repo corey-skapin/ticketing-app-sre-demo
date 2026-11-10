@@ -42,6 +42,12 @@ release next to the health status.
 `createHandler` accepts as an option so tests can replace it. The built-in
 reservation is simulated and always succeeds; no purchase is made.
 
+If the reservation throws, checkout answers `500` with a generic message and no
+error details. The failure is tracked as an exception (message and stack) and as
+a request with `resultCode` `500` and `outcome` `failed`, and the app writes one
+`checkout-failed` JSON line to the console with the release and the error
+message, never the stack. Health stays available.
+
 ## Routes and telemetry
 
 | Method | Path | Result |
@@ -49,20 +55,21 @@ reservation is simulated and always succeeds; no purchase is made.
 | GET | `/` | Self-contained UI |
 | GET | `/app.js`, `/styles.css` | Only explicitly allowlisted static assets |
 | GET | `/healthz` | 200 JSON: `status`, `version` and `release` |
-| POST | `/checkout` | 200 JSON for a simulated reservation |
+| POST | `/checkout` | 200 JSON for a simulated reservation, or 500 JSON if it fails |
 
 Known paths with other methods return 405 with `Allow`; unknown paths return
 404. Bodies are ignored.
 
 SDK telemetry is manual-only, unsampled (`samplingPercentage: 100`): one request
 named `POST /checkout` for each checkout, with its success, duration and HTTP
-status. Every request and event carries `releaseSha` and `appVersion`
-properties, and startup sends a `ReleaseStarted` event when telemetry is
-configured. No request bodies, query parameters, host headers or access tokens are
-recorded. Automatic dependency, request, exception, console and live-metrics
-collection are disabled to prevent duplicates and sensitive diagnostics. Missing
-telemetry config disables telemetry without blocking the app. Unavailable
-telemetry never fails checkout.
+status, plus an exception for each failed checkout. Every request, exception and
+event carries `releaseSha` and `appVersion` properties, and startup sends a
+`ReleaseStarted` event when telemetry is configured. No request bodies, query
+parameters, host headers or access tokens are recorded. Automatic dependency,
+request, exception, console and live-metrics collection are disabled to prevent
+duplicates and sensitive diagnostics. Missing telemetry config disables
+telemetry without blocking the app. Unavailable telemetry never changes a
+checkout response.
 
 ## Traffic
 

@@ -34,6 +34,21 @@ function createHandler({ telemetry, reserveTickets = defaultReserveTickets, rele
     }
   }
 
+  function trackCheckout(started, success) {
+    track('trackRequest', {
+      name: 'POST /checkout',
+      url: 'http://localhost/checkout', // Never trust Host/query parameters in telemetry.
+      duration: performance.now() - started,
+      resultCode: success ? '200' : '500',
+      success,
+      // AI 3.16.0 omits http.method for named requests; the exporter needs it for HTTP status mapping.
+      properties: {
+        simulated: 'true', outcome: success ? 'reserved' : 'failed', 'http.method': 'POST',
+        ...releaseProperties,
+      },
+    });
+  }
+
   return async function handler(request, response) {
     response.setHeader('Cache-Control', 'no-store');
     response.setHeader('X-Content-Type-Options', 'nosniff');
@@ -64,16 +79,25 @@ function createHandler({ telemetry, reserveTickets = defaultReserveTickets, rele
     }
 
     const started = performance.now();
-    await reserveTickets();
-    track('trackRequest', {
-      name: 'POST /checkout',
-      url: 'http://localhost/checkout', // Never trust Host/query parameters in telemetry.
-      duration: performance.now() - started,
-      resultCode: '200',
-      success: true,
-      // AI 3.16.0 omits http.method for named requests; the exporter needs it for HTTP status mapping.
-      properties: { simulated: 'true', outcome: 'reserved', 'http.method': 'POST', ...releaseProperties },
-    });
+    try {
+      await reserveTickets();
+    } catch (error) {
+      const failure = error instanceof Error ? error : new Error(String(error));
+      track('trackException', {
+        exception: failure,
+        properties: { ...releaseProperties, operation: 'POST /checkout' },
+      });
+      trackCheckout(started, false);
+      // The log line carries the message only; the stack goes to telemetry.
+      console.error(JSON.stringify({
+        event: 'checkout-failed', release: release.sha, message: failure.message,
+      }));
+      return json(response, 500, {
+        success: false, simulated: true,
+        message: 'Simulated checkout failed. Please try again shortly.',
+      });
+    }
+    trackCheckout(started, true);
     return json(response, 200, {
       success: true, simulated: true,
       message: 'Simulated checkout succeeded; no purchase was made.',
