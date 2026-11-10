@@ -9,11 +9,14 @@ const { createHandler } = require('../handler');
 const builtInRelease = require('../release');
 
 const release = { version: '9.8.7', sha: 'abc1234' };
+const gatewayEnv = { PAYMENT_GATEWAY_URL: 'https://payments.example.test' };
 
 function fixture(options = {}) {
   const requests = [];
   const exceptions = [];
   const reservations = [];
+  const gatewayCalls = [];
+  const steps = [];
   const telemetry = {
     trackRequest: (data) => requests.push(data),
     trackException: (data) => exceptions.push(data),
@@ -21,10 +24,19 @@ function fixture(options = {}) {
   const handler = createHandler({
     telemetry,
     release,
-    reserveTickets: async (reservation) => { reservations.push(reservation); },
+    env: gatewayEnv,
+    fetchImpl: async (url, init) => {
+      steps.push('authorize');
+      gatewayCalls.push({ url: String(url), method: init.method, body: JSON.parse(init.body) });
+      return { ok: true, status: 200, json: async () => ({ authorized: true }) };
+    },
+    reserveTickets: async (reservation) => {
+      steps.push('reserve');
+      reservations.push(reservation);
+    },
     ...options,
   });
-  return { handler, requests, exceptions, reservations, telemetry };
+  return { handler, requests, exceptions, reservations, gatewayCalls, steps, telemetry };
 }
 
 const reservationFailure = new Error('reservation backend rejected order for 203.0.113.7');
@@ -67,10 +79,42 @@ test('checkout reserves tickets, reports a simulated success and tracks one requ
   });
 });
 
-test('the built-in reservation succeeds without any configuration', async () => {
-  const response = await invoke(createHandler());
+test('the built-in reservation succeeds once the payment is authorised', async () => {
+  const f = fixture({ reserveTickets: undefined });
+  const response = await invoke(f.handler);
   assert.equal(response.status, 200);
   assert.equal(JSON.parse(response.body).success, true);
+});
+
+test('checkout authorises the order with the payment gateway before reserving it', async () => {
+  const f = fixture();
+  const response = await invoke(f.handler);
+  assert.equal(response.status, 200);
+  const { orderId } = JSON.parse(response.body);
+  assert.deepEqual(f.steps, ['authorize', 'reserve']);
+  assert.deepEqual(f.gatewayCalls, [{
+    url: 'https://payments.example.test/v1/authorize',
+    method: 'POST',
+    body: { orderId, amountCents: 16800 },
+  }]);
+  assert.deepEqual(f.reservations, [{ orderId }]);
+});
+
+test('a gateway failure returns a 500 without details and reserves nothing', async (t) => {
+  t.mock.method(console, 'error', () => {});
+  const f = fixture({ fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }) });
+  const response = await invoke(f.handler);
+  assert.equal(response.status, 500);
+  assert.deepEqual(JSON.parse(response.body), {
+    success: false, simulated: true,
+    message: 'Simulated checkout failed. Please try again shortly.',
+  });
+  assert.equal(response.body.includes('503'), false);
+  assert.equal(f.reservations.length, 0);
+  assert.equal(f.exceptions.length, 1);
+  assert.equal(f.exceptions[0].exception.message, 'Payment gateway returned 503');
+  assert.equal(f.requests[0].resultCode, '500');
+  assert.equal((await invoke(f.handler, 'GET', '/healthz')).status, 200);
 });
 
 test('a reservation returns the first eight characters of a random UUID, uppercased', async (t) => {

@@ -4,7 +4,10 @@ const crypto = require('node:crypto');
 const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const { performance } = require('node:perf_hooks');
+const { authorizePayment } = require('./payments');
 const defaultRelease = require('./release');
+
+const ORDER_TOTAL_CENTS = 16800;
 
 const assets = new Map([
   ['/', ['index.html', 'text/html; charset=utf-8']],
@@ -28,7 +31,10 @@ async function defaultReserveTickets() {
   return { reserved: true };
 }
 
-function createHandler({ telemetry, reserveTickets = defaultReserveTickets, release = defaultRelease } = {}) {
+function createHandler({
+  telemetry, reserveTickets = defaultReserveTickets, release = defaultRelease,
+  env = process.env, fetchImpl,
+} = {}) {
   const releaseProperties = { releaseSha: release.sha, appVersion: release.version };
 
   function track(method, data) {
@@ -86,6 +92,7 @@ function createHandler({ telemetry, reserveTickets = defaultReserveTickets, rele
     const started = performance.now();
     const orderId = createOrderId();
     try {
+      await authorizePayment({ env, orderId, amountCents: ORDER_TOTAL_CENTS, fetchImpl });
       await reserveTickets({ orderId });
     } catch (error) {
       const failure = error instanceof Error ? error : new Error(String(error));

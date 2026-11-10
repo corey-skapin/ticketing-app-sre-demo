@@ -51,6 +51,7 @@ You configure the app with environment variables.
 | Variable | Meaning |
 | --- | --- |
 | `PORT` | Port to listen on. Defaults to `8080`. |
+| `PAYMENT_GATEWAY_URL` | Base URL of the payment gateway; required for checkout. |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | Optional. Sends telemetry to Application Insights when set. |
 | `APP_VERSION` | Optional. The version the app reports when you run it from source. Defaults to `dev`. A packaged build reports its own. |
 | `RELEASE_SHA` | Optional. The release (commit) the app reports when you run it from source. Defaults to `dev`. A packaged build reports its own. |

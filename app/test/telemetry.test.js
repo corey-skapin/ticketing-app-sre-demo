@@ -10,6 +10,10 @@ const { createTelemetry } = require('../telemetry');
 
 const key = 'test-instrumentation-key';
 const connectionString = `InstrumentationKey=${key};IngestionEndpoint=https://example.invalid/`;
+const gateway = {
+  env: { PAYMENT_GATEWAY_URL: 'https://payments.example.test' },
+  fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ authorized: true }) }),
+};
 
 function offlineTelemetry(t) {
   const sdk = require('applicationinsights');
@@ -132,6 +136,7 @@ test('checkout emits a sanitized 200 request envelope through the installed SDK 
   const telemetry = offlineTelemetry(t);
   const secret = 'checkout-secret-never-export';
   const handler = createHandler({
+    ...gateway,
     telemetry: telemetry.client,
     release: { version: '9.8.7', sha: 'abc1234' },
   });
@@ -166,6 +171,7 @@ test('a failed checkout emits a 500 request and an exception through the install
   const telemetry = offlineTelemetry(t);
   const secret = 'checkout-secret-never-export';
   const handler = createHandler({
+    ...gateway,
     telemetry: telemetry.client,
     release: { version: '9.8.7', sha: 'abc1234' },
     reserveTickets: async () => { throw new Error('reservation backend unavailable'); },

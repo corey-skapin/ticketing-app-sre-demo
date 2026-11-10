@@ -23,6 +23,7 @@ credentials or put them in browser code.
 | Variable | Meaning |
 | --- | --- |
 | `PORT` | HTTP listening port; default `8080` |
+| `PAYMENT_GATEWAY_URL` | Base URL of the payment gateway; required for checkout |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | Server-side SDK connection string; omit for local offline use |
 | `APP_VERSION` | Version to report when you run from source; default `dev`. A packaged build reports its own. |
 | `RELEASE_SHA` | Release (commit) to report when you run from source; default `dev`. A packaged build reports its own. |
@@ -65,9 +66,16 @@ root README describes how tags publish the zip as a release.
 
 ## Checkout
 
-`POST /checkout` reserves tickets through `reserveTickets({ orderId })`, which
-`createHandler` accepts as an option so tests can replace it. The built-in
-reservation is simulated and always succeeds; no purchase is made.
+`POST /checkout` authorises the order with the payment gateway, then reserves
+tickets through `reserveTickets({ orderId })`, which `createHandler` accepts as an
+option so tests can replace it. The built-in reservation is simulated and always
+succeeds; no purchase is made.
+
+The authorisation (`payments.js`) posts the `orderId` and a fixed amount to
+`/v1/authorize` under `PAYMENT_GATEWAY_URL` and gives the gateway three seconds to
+answer. A missing URL, a non-2xx answer or a timeout fails the checkout like any
+other error, and nothing is reserved. `createHandler` accepts `env` and
+`fetchImpl` options so tests can supply their own.
 
 Each reservation gets a short `orderId`: the first eight characters of a random
 UUID, in upper case. The success response returns it, and the page shows it after

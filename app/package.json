@@ -1,6 +1,6 @@
 {
   "name": "ticketing-app",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "private": true,
   "description": "Small ticketing site with a simulated checkout",
   "engines": {
@@ -9,7 +9,7 @@
   "scripts": {
     "start": "node server.js",
     "test": "node --test",
-    "check": "node --check server.js && node --check handler.js && node --check release.js && node --check telemetry.js && node --check public/app.js && node --check scripts/package.mjs && node --check test/handler.test.js && node --check test/page.test.js && node --check test/release.test.js && node --check test/server.test.js && node --check test/telemetry.test.js",
+    "check": "node --check server.js && node --check handler.js && node --check payments.js && node --check release.js && node --check telemetry.js && node --check public/app.js && node --check scripts/package.mjs && node --check test/handler.test.js && node --check test/page.test.js && node --check test/payments.test.js && node --check test/release.test.js && node --check test/server.test.js && node --check test/telemetry.test.js",
     "package": "node scripts/package.mjs"
   },
   "dependencies": {
