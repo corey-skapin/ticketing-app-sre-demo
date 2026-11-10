@@ -15,6 +15,9 @@ param location string
 ])
 param workloadOption string
 
+@description('Payment gateway URL for the App Service checkout scenario.')
+param paymentGatewayUrl string = ''
+
 @description('Optional. Name of an existing resource group to deploy the lab workload into. Leave empty to create rg-flu-<token>. Use this when the resource group was pre-created (for example by the lab bootstrap script), possibly in a different region than the workload.')
 param resourceGroupName string = ''
 
@@ -40,6 +43,7 @@ module workload 'modules/workload.bicep' = {
     location: location
     namePrefix: 'flu-${resourceToken}'
     workloadOption: workloadOption
+    paymentGatewayUrl: paymentGatewayUrl
     tags: tags
   }
 }

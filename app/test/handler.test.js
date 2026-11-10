@@ -314,6 +314,26 @@ test('App Service option succeeds without PostgreSQL and emits request-only tele
   assert.equal(f.requests[0].properties.outcome, 'available');
 });
 
+test('App Service missing payment gateway returns sanitized 503 and configuration telemetry', async () => {
+  const f = fixture({ handler: { env: { WORKLOAD_OPTION: 'app-service' } } });
+  const response = await invoke(f.handler);
+  assert.equal(response.status, 503);
+  assert.equal(response.headers['Retry-After'], '3');
+  assert.deepEqual(JSON.parse(response.body), {
+    success: false, simulated: true,
+    message: 'Simulated checkout unavailable. Please try again shortly.',
+  });
+  assert.equal(f.clients.length, 0);
+  assert.equal(f.dependencies.length, 0);
+  assert.equal(f.requests.length, 1);
+  assert.equal(f.requests[0].name, 'POST /checkout');
+  assert.equal(f.requests[0].resultCode, '503');
+  assert.equal(f.requests[0].success, false);
+  assert.equal(f.requests[0].properties.outcome, 'configuration-unavailable');
+  assert.ok(f.requests[0].duration >= 0);
+  assert.equal((await invoke(f.handler, 'GET', '/healthz')).status, 200);
+});
+
 test('App Service fault returns 503 while health remains available', async () => {
   const f = fixture({ handler: { env: {
     WORKLOAD_OPTION: 'app-service',

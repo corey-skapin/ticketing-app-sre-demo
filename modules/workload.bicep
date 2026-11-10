@@ -13,6 +13,9 @@ param namePrefix string
 ])
 param workloadOption string = 'app-service-postgresql'
 
+@description('Payment gateway URL for the App Service checkout scenario.')
+param paymentGatewayUrl string = ''
+
 @description('When true, deny checkout traffic to PostgreSQL on TCP 5432.')
 param injectDatabaseFault bool = false
 
@@ -302,6 +305,10 @@ resource checkoutApp 'Microsoft.Web/sites@2024-04-01' = {
         {
           name: 'WORKLOAD_OPTION'
           value: workloadOption
+        }
+        {
+          name: 'PAYMENT_GATEWAY_URL'
+          value: paymentGatewayUrl
         }
         {
           name: 'APP_FAULT_ENABLED'

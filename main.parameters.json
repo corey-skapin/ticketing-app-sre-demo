@@ -4,6 +4,7 @@
   "parameters": {
     "environmentName": { "value": "${AZURE_ENV_NAME}" },
     "location": { "value": "${AZURE_LOCATION}" },
-    "workloadOption": { "value": "${LAB_WORKLOAD_OPTION=app-service}" }
+    "workloadOption": { "value": "${LAB_WORKLOAD_OPTION=app-service}" },
+    "paymentGatewayUrl": { "value": "${PAYMENT_GATEWAY_URL=}" }
   }
 }

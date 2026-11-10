@@ -24,6 +24,17 @@ Choose one of two equal workload options before `azd up`:
 - `app-service` deploys Linux App Service and shared telemetry.
 - `app-service-postgresql` adds PostgreSQL Flexible Server and private networking. Register `Microsoft.DBforPostgreSQL` before deployment and use a subscription where PostgreSQL 16 with `Standard_B1ms` is available in Sweden Central.
 
+For `app-service`, set your environment's payment gateway URL before `azd up`:
+
+```bash
+azd env set PAYMENT_GATEWAY_URL https://payments.example.test
+```
+
+Replace the example with your gateway URL. This supplies the `paymentGatewayUrl`
+Bicep parameter and the App Service setting. If omitted, checkout returns a
+sanitized 503 with telemetry outcome `configuration-unavailable`; health remains
+available.
+
 To select the PostgreSQL option:
 
 ```bash

@@ -25,6 +25,7 @@ return a sanitized 503. Do not commit credentials or put them in browser code.
 | Variable | Meaning |
 | --- | --- |
 | `PORT` | HTTP listening port; default `8080` |
+| `PAYMENT_GATEWAY_URL` | Required for `WORKLOAD_OPTION=app-service`; missing configuration returns sanitized 503 with telemetry outcome `configuration-unavailable` |
 | `POSTGRES_HOST` | PostgreSQL DNS hostname matching its trusted TLS certificate |
 | `POSTGRES_PORT` | PostgreSQL port; default `5432` |
 | `POSTGRES_DATABASE` | Existing database name |
