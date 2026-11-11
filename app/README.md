@@ -73,19 +73,20 @@ succeeds; no purchase is made.
 
 The authorisation (`payments.js`) posts the `orderId` and a fixed amount to
 `/v1/authorize` under `PAYMENT_GATEWAY_URL` and gives the gateway three seconds to
-answer. A missing URL, a non-2xx answer or a timeout fails the checkout like any
-other error, and nothing is reserved. `createHandler` accepts `env` and
-`fetchImpl` options so tests can supply their own.
+answer. If the URL is missing, checkout returns a sanitized `503` and tracks the
+request with outcome `configuration_missing`; nothing is reserved. A non-2xx
+answer or a timeout returns `500` and nothing is reserved. `createHandler`
+accepts `env` and `fetchImpl` options so tests can supply their own.
 
 Each reservation gets a short `orderId`: the first eight characters of a random
 UUID, in upper case. The success response returns it, and the page shows it after
 "Tickets reserved".
 
-If the reservation throws, checkout answers `500` with a generic message and no
-error details. The failure is tracked as an exception (message and stack) and as
-a request with `resultCode` `500` and `outcome` `failed`, and the app writes one
-`checkout-failed` JSON line to the console with the release and the error
-message, never the stack. Health stays available.
+If authorization or reservation throws, checkout answers `500` with a generic
+message and no error details. The failure is tracked as an exception (message and
+stack) and as a request with `resultCode` `500` and `outcome` `failed`, and the
+app writes one `checkout-failed` JSON line to the console with the release and the
+error message, never the stack. Health stays available.
 
 ## Routes and telemetry
 
@@ -94,7 +95,7 @@ message, never the stack. Health stays available.
 | GET | `/` | Self-contained UI |
 | GET | `/app.js`, `/styles.css` | Only explicitly allowlisted static assets |
 | GET | `/healthz` | 200 JSON: `status`, `version` and `release` |
-| POST | `/checkout` | 200 JSON with an `orderId` for a simulated reservation, or 500 JSON if it fails |
+| POST | `/checkout` | 200 JSON with an `orderId`, 503 if payment gateway configuration is missing, or 500 if checkout fails |
 
 Known paths with other methods return 405 with `Allow`; unknown paths return
 404. Bodies are ignored.

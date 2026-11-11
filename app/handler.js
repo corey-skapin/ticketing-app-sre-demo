@@ -45,16 +45,17 @@ function createHandler({
     }
   }
 
-  function trackCheckout(started, success) {
+  function trackCheckout(started, success, resultCode = success ? '200' : '500',
+    outcome = success ? 'reserved' : 'failed') {
     track('trackRequest', {
       name: 'POST /checkout',
       url: 'http://localhost/checkout', // Never trust Host/query parameters in telemetry.
       duration: performance.now() - started,
-      resultCode: success ? '200' : '500',
+      resultCode,
       success,
       // AI 3.16.0 omits http.method for named requests; the exporter needs it for HTTP status mapping.
       properties: {
-        simulated: 'true', outcome: success ? 'reserved' : 'failed', 'http.method': 'POST',
+        simulated: 'true', outcome, 'http.method': 'POST',
         ...releaseProperties,
       },
     });
@@ -90,6 +91,13 @@ function createHandler({
     }
 
     const started = performance.now();
+    if (!env.PAYMENT_GATEWAY_URL) {
+      trackCheckout(started, false, '503', 'configuration_missing');
+      return json(response, 503, {
+        success: false, simulated: true,
+        message: 'Checkout is temporarily unavailable due to service configuration.',
+      });
+    }
     const orderId = createOrderId();
     try {
       await authorizePayment({ env, orderId, amountCents: ORDER_TOTAL_CENTS, fetchImpl });

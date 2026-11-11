@@ -70,9 +70,11 @@ https://github.com/<owner>/<repo>/releases/download/<tag>/ticketing-app-<tag>.zi
 
 The zip root holds the single-file bundle (`server.js` and `server.js.map`), a
 minimal `package.json` and the `public` folder. The app runs from that package:
-set the App Service setting `WEBSITE_RUN_FROM_PACKAGE` to the asset URL and
-restart the app. To roll back, point `WEBSITE_RUN_FROM_PACKAGE` at an earlier
-tag's asset.
+set the App Service setting `PAYMENT_GATEWAY_URL` to the environment's payment
+gateway base URL before deploying, then set `WEBSITE_RUN_FROM_PACKAGE` to the
+asset URL and restart the app. Without `PAYMENT_GATEWAY_URL`, checkout returns a
+503 with a `configuration_missing` telemetry outcome. To roll back, point
+`WEBSITE_RUN_FROM_PACKAGE` at an earlier tag's asset.
 
 `GET /healthz` reports the `version` and `release` the app is running, so you can
 confirm which package is live.
