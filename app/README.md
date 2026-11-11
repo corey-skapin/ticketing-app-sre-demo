@@ -102,9 +102,11 @@ Known paths with other methods return 405 with `Allow`; unknown paths return
 
 SDK telemetry is manual-only, unsampled (`samplingPercentage: 100`): one request
 named `POST /checkout` for each checkout, with its success, duration and HTTP
-status, plus an exception for each failed checkout. Every request, exception and
-event carries `releaseSha` and `appVersion` properties, and startup sends a
-`ReleaseStarted` event when telemetry is configured. No request bodies, query
+status, plus an exception for failures that throw during authorization or
+reservation. Every request, exception and event carries `releaseSha` and
+`appVersion` properties, and startup sends a `ReleaseStarted` event when
+telemetry is configured. A missing gateway URL is tracked as a request only,
+with no exception. No request bodies, query
 parameters, host headers or access tokens are recorded. Automatic dependency,
 request, exception, console and live-metrics collection are disabled to prevent
 duplicates and sensitive diagnostics. Missing telemetry config disables

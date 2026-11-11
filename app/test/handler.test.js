@@ -111,17 +111,16 @@ test('checkout without a payment gateway URL returns a tracked 503 without reser
   assert.equal(f.gatewayCalls.length, 0);
   assert.equal(f.reservations.length, 0);
   assert.equal(f.exceptions.length, 0);
-  assert.deepEqual(f.requests[0], {
-    name: 'POST /checkout',
-    url: 'http://localhost/checkout',
-    duration: f.requests[0].duration,
-    resultCode: '503',
-    success: false,
-    properties: {
-      simulated: 'true', outcome: 'configuration_missing', 'http.method': 'POST',
-      releaseSha: 'abc1234', appVersion: '9.8.7',
-    },
+  const [request] = f.requests;
+  assert.equal(request.name, 'POST /checkout');
+  assert.equal(request.url, 'http://localhost/checkout');
+  assert.equal(request.resultCode, '503');
+  assert.equal(request.success, false);
+  assert.deepEqual(request.properties, {
+    simulated: 'true', outcome: 'configuration_missing', 'http.method': 'POST',
+    releaseSha: 'abc1234', appVersion: '9.8.7',
   });
+  assert.ok(request.duration >= 0);
   assert.equal((await invoke(f.handler, 'GET', '/healthz')).status, 200);
 });
 
